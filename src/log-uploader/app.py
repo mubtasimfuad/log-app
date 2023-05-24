@@ -23,7 +23,7 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'body': response['Items'][0]
+        'body': "Uploaded to dynamodb"
             
         
     }
