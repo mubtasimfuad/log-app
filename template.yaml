@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  log-archive
+
+  Sample SAM Template for log-archive
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+  
+Resources:
+  LogApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: test
+
+  LogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: log-table
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      TimeToLiveSpecification:
+        AttributeName: expirationTime
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+
+  LogUploaderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: logUploaderFunction
+      CodeUri: src/log-uploader/
+      Handler: app.lambda_handler
+      Runtime: python3.10
+      Environment:
+        Variables:
+          S3BucketName: !Ref LogBucketFuad
+      Events:
+        ListProduct:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+            RestApiId: !Ref LogApi
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: !Ref LogTable
+
+  LogExportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: logExportFunction
+      CodeUri: src/log-exporter/
+      Handler: app.lambda_handler
+      Runtime: python3.10
+      Environment:
+        Variables:
+          S3BucketName: !Ref LogBucketFuad
+      Events:
+        LogTableStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt LogTable.StreamArn
+            StartingPosition: LATEST
+        ExportToS3:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
+            RestApiId: !Ref LogApi
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: !Ref LogTable
+      - S3WritePolicy:
+          BucketName: !Ref LogBucketFuad
+
+      
+
+  
+      # Events:
+      #   LogTableStream:
+      #     Type: DynamoDB
+      #     Properties:
+      #       Stream: !GetAtt LogTable.StreamArn
+
+  LogBucketFuad:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: log-bucket-fuad
+
+Outputs:
+  APIEndpoint:
+    Description: URL of the API endpoint
+    Value: !Sub 'https://${LogApi}.execute-api.${AWS::Region}.amazonaws.com/test/'
